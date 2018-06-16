@@ -12,6 +12,7 @@ from bt_states import SUCCESS, FAILURE, RUNNING
 from bt_pieces import ActionNodeLeaf, InstantLeaf, Seq, Fallback, Negate
 
 import pickle
+import os
 
 class Pepper:
     def __init__(self):
@@ -40,17 +41,18 @@ class Pepper:
         return FAILURE
 
     def check_password(self):
+        pw = ''
         try:
             with open('/home/ozer/sorohack/password.txt', 'r') as fin:
                 pw = fin.read()
-                if pw == 'almonds':
+                if pw == 'almonds\n':
                     print("PW CORRECT")
                     return SUCCESS
         except:
             print('NO PW FILE FOUND')
             return FAILURE
 
-        print("PW INCORRECT")
+        print("PW INCORRECT",pw)
         return FAILURE
 
     def can_reach_punch_goal(self):
@@ -67,6 +69,13 @@ class Pepper:
         #TODO
         print('WAITING')
         return RUNNING
+
+    def delete_goal_file(self):
+        try:
+            os.remove('/home/ozer/sorohack/punch_goal.txt')
+            return SUCCESS
+        except:
+            return FAILURE
 
 
     def get_punch_goal(self):
@@ -86,6 +95,7 @@ if __name__=='__main__':
     punch_object = ActionNodeLeaf('punch', goal_fn=P.get_punch_goal)
 
     set_punch_goal = InstantLeaf('set_punch_goal', P.set_punch_goal)
+    delete_goal_file = InstantLeaf('delete_goal_file', P.delete_goal_file)
     # movement
     can_reach_punch_goal = InstantLeaf('can_reach_punch_goal',P.can_reach_punch_goal)
     goal_to_the_right = InstantLeaf('goal_to_the_right',P.goal_to_the_right)
@@ -116,7 +126,8 @@ if __name__=='__main__':
             Seq('can we punch yet',[
                 set_punch_goal,
                 mover,
-                punch_object
+                punch_object,
+                delete_goal_file
             ]),
             wait
         ])
@@ -131,11 +142,11 @@ if __name__=='__main__':
     while not rospy.is_shutdown():
         r = root.tick()
         s = root.display(0)
-        if s != prev_s:
-            print(s)
+        #  if s != prev_s:
+        print(s)
         prev_s = s
-        if r == SUCCESS:
-            break
+        #  if r == SUCCESS:
+            #  break
         rate.sleep()
 
 
