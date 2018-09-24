@@ -13,8 +13,19 @@ import actionlib
 from sorohack_tree.msg import BTAction, BTGoal, BTFeedback
 from bt_states import SUCCESS, FAILURE, RUNNING
 
+class AbstractLeafNode:
+    def traverse(self):
+        return self._name
 
-class ActionNodeLeaf:
+class AbstractBranchNode:
+    def traverse(self):
+        r = []
+        for child in self._children:
+            r.append(child.traverse())
+        return r
+
+
+class ActionNodeLeaf(AbstractLeafNode):
     """
     A complete and long running action
     There needs to be an action server with the same name somewhere else, running.
@@ -143,9 +154,7 @@ class ActionNodeLeaf:
 
 
 
-
-
-class InstantLeaf():
+class InstantLeaf(AbstractLeafNode):
     """
     This leaf instantly completes the job
     and therefore doesnt need an action server.
@@ -193,13 +202,17 @@ class InstantLeaf():
         return s
 
 
-class Seq():
+
+class Seq(AbstractBranchNode):
     """
     Ticks children in the given order as they return SUCCESS,
     returns the child's return if its not SUCCESS.
     """
-    def __init__(self, name, children=[]):
-        self._children = children
+    def __init__(self, name, children=None):
+        if children is None:
+            self._children = []
+        else:
+            self._children = children
         self._name = name
         self._status = None
         self._status_string = 'None'
@@ -246,13 +259,16 @@ class Seq():
 
 
 
-class Fallback():
+class Fallback(AbstractBranchNode):
     """
     Ticks children in the given order as they return FAILURE,
     returns the child's return if its not FAILURE
     """
-    def __init__(self, name, children=[]):
-        self._children = children
+    def __init__(self, name, children=None):
+        if children is None:
+            self._children = []
+        else:
+            self._children = children
         self._name = name
         self._status = None
         self._status_string = 'None'
@@ -296,19 +312,21 @@ class Fallback():
             s += str(child.display(level+1))
         return s
 
-class Negate():
+class Negate(AbstractBranchNode):
     """
     Negates the return of the child when ticked.
     Does not do anything for "RUNNING"
     """
     def __init__(self, child):
-        self._child = child
+        # will use children, even though it should never have more than 1
+        # just so we can define Negate as a branch node
+        self._children = [child]
         self._name = '!('+child._name+')'
         self._status = None
         self._status_string = 'None'
 
     def tick(self):
-        r = self._child.tick()
+        r = self._children[0].tick()
         if r == SUCCESS:
             self._status_string = str(self._status)+' -> '+FAILURE
             self._status = FAILURE
@@ -332,85 +350,8 @@ class Negate():
         This leaf is supposed to be instant!
         Mostly here for compatibility
         """
-        self._child.preempt()
+        self._children[0].preempt()
         self._status_string = str(self._status)+ ' -> None (Preempt)'
         self._status = None
-
-
-class SomeThing:
-    def __init__(self):
-        self.a = 1
-        self.b = 2
-        self.c = 3
-
-    def a_eq_b(self):
-        if self.a == self.b:
-            return SUCCESS
-        return FAILURE
-
-    def inc_a(self):
-        self.a += 1
-        return RUNNING
-
-    def inc_b(self):
-        self.b += 2
-        return RUNNING
-
-    def inc_c(self):
-        self.c += 1
-        return SUCCESS
-
-    def c_eq_ten(self):
-        if self.c == 10:
-            return SUCCESS
-        return FAILURE
-
-    def a_larger_than_b(self):
-        if self.a > self.b:
-            return SUCCESS
-        return FAILURE
-
-
-if __name__ == '__main__':
-    rospy.init_node('BT')
-    rate = rospy.Rate(10)
-
-    s = SomeThing()
-    s.a = 0
-    s.b = 9
-
-    fb0 = Fallback('root')
-
-    fb1 = Fallback('fb1')
-    fb1.add_child(InstantLeaf('a>b',s.a_larger_than_b))
-    fb1.add_child(InstantLeaf('a+=1',s.inc_a))
-
-
-    seq1 = Seq('seq1')
-    seq1.add_child(Negate(InstantLeaf('c eq 10', s.c_eq_ten)))
-    seq1.add_child(InstantLeaf('c+=1', s.inc_c))
-    seq1.add_child(fb1)
-    seq1.add_child(InstantLeaf('inc b', s.inc_b))
-
-    fb0.add_child(seq1)
-    anl = ActionNodeLeaf('test_action', goal='s')
-    fb0.add_child(anl)
-
-    root = fb0
-
-    r = FAILURE
-    prev_s = ''
-    for i in range(100):
-        r = root.tick()
-        s = root.display(0)
-        if s != prev_s:
-            print(s)
-        prev_s = s
-        if r == SUCCESS or r == FAILURE:
-            break
-
-        rate.sleep()
-
-
 
 
