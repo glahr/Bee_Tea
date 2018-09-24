@@ -1,5 +1,5 @@
 # Bee_Tea
-A behaviour tree implementation on ROS using Python. Can use ROS actionlib servers as leaf ndoes.
+A behaviour tree implementation on ROS using Python. Can use ROS actionlib servers as leaf nodes.
 
 See scripts/bt_example.py for an example of how to construct a BT and use a ROS action server at a leaf node.
 An example run from `scripts/`:
