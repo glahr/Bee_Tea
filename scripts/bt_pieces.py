@@ -10,7 +10,7 @@ from __future__ import print_function
 import rospy
 import actionlib
 
-from sorohack_tree.msg import BTAction, BTGoal, BTFeedback
+from bee_tea.msg import BTAction, BTGoal, BTFeedback
 from bt_states import SUCCESS, FAILURE, RUNNING
 
 class AbstractLeafNode:
@@ -318,8 +318,7 @@ class Negate(AbstractBranchNode):
     Does not do anything for "RUNNING"
     """
     def __init__(self, child):
-        # will use children, even though it should never have more than 1
-        # just so we can define Negate as a branch node
+        #  so we maintain interface with other 'has-a-child' nodes
         self._children = [child]
         self._name = '!('+child._name+')'
         self._status = None

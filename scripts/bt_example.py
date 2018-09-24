@@ -10,7 +10,7 @@ from __future__ import print_function
 import rospy
 import actionlib
 
-from sorohack_tree.msg import BTAction, BTGoal, BTFeedback
+from bee_tea.msg import BTAction, BTGoal, BTFeedback
 from bt_states import SUCCESS, FAILURE, RUNNING
 from bt_pieces import ActionNodeLeaf, InstantLeaf, Seq, Fallback, Negate
 
@@ -68,7 +68,6 @@ if __name__ == '__main__':
     s.a = 0
     s.b = 9
 
-    import sys
     # create a tree
     fb0 = Fallback('root')
 
@@ -77,7 +76,6 @@ if __name__ == '__main__':
     # they should never return 'running'
     fb1.add_child(InstantLeaf('a>b',s.a_larger_than_b))
     fb1.add_child(InstantLeaf('a+=1',s.inc_a))
-
 
     seq1 = Seq('seq1')
     seq1.add_child(Negate(InstantLeaf('c eq 10', s.c_eq_ten)))
@@ -101,8 +99,7 @@ if __name__ == '__main__':
     # less print-spam
     prev_s = ''
 
-
-    print('Tree as a list:', root.traverse())
+    print('Traversal:',root.traverse())
 
     # tick 100 times
     for i in range(100):
