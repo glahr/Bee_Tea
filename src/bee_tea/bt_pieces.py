@@ -11,7 +11,7 @@ import rospy
 import actionlib
 
 from bee_tea.msg import BTAction, BTGoal, BTFeedback
-from bt_states import SUCCESS, FAILURE, RUNNING
+from bee_tea.bt_states import SUCCESS, FAILURE, RUNNING
 
 class AbstractLeafNode:
     def traverse(self):

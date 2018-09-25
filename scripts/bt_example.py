@@ -11,8 +11,8 @@ import rospy
 import actionlib
 
 from bee_tea.msg import BTAction, BTGoal, BTFeedback
-from bt_states import SUCCESS, FAILURE, RUNNING
-from bt_pieces import ActionNodeLeaf, InstantLeaf, Seq, Fallback, Negate
+from bee_tea.bt_states import SUCCESS, FAILURE, RUNNING
+from bee_tea.bt_pieces import ActionNodeLeaf, InstantLeaf, Seq, Fallback, Negate
 
 
 class SomeThing:

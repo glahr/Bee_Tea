@@ -13,7 +13,7 @@ import actionlib
 from bee_tea.msg import BTAction, BTFeedback, BTResult
 
 
-from bt_states import SUCCESS, FAILURE, RUNNING
+from bee_tea.bt_states import SUCCESS, FAILURE, RUNNING
 
 class BT_ActionNode:
     def __init__(self, name):
