@@ -96,7 +96,7 @@ class ActionNodeLeaf(AbstractLeafNode):
             ret = self._status
             # reset the 'doneness' of the action so we can do it again
             self._status = None
-            rospy.loginfo(self._name+' is done with:'+ret)
+            rospy.loginfo(self._name+' is done with:'+str(ret))
 
             self._status_string = str(ret)+' -> None'
             return ret
@@ -112,7 +112,7 @@ class ActionNodeLeaf(AbstractLeafNode):
                 # we let the tree know of the result immediately
                 self._status = None
                 ret = result.bt_status
-                rospy.loginfo(self._name+' is done with:'+ret)
+                rospy.loginfo(self._name+' is done with:'+str(ret))
 
                 self._status_string = 'RUNNING -> '+str(ret)+' -> None'
                 return ret
@@ -228,7 +228,7 @@ class Seq(AbstractBranchNode):
             # if success, we will tick the next one
             # and not return
             if r != SUCCESS:
-                self._status_string = str(self._status)+' -> '+r
+                self._status_string = str(self._status)+' -> '+str(r)
                 self._status = r
                 # one child is running or failed
                 # all next children must be 'unticked'
@@ -284,7 +284,7 @@ class Fallback(AbstractBranchNode):
             # if failure, we will tick the next one
             # and not return
             if r != FAILURE:
-                self._status_string = str(self._status)+' -> '+r
+                self._status_string = str(self._status)+' -> '+ str(r)
                 self._status = r
                 # one child is running or succeeded
                 # all next children must be 'unticked'
@@ -335,7 +335,7 @@ class Negate(AbstractBranchNode):
             self._status = SUCCESS
             return SUCCESS
 
-        self._status_string = str(self._status)+' -> '+r
+        self._status_string = str(self._status)+' -> '+str(r)
         self._status = r
         return r
 
