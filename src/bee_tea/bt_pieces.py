@@ -13,16 +13,80 @@ import actionlib
 from bee_tea.msg import BTAction, BTGoal, BTFeedback
 from bee_tea.bt_states import SUCCESS, FAILURE, RUNNING
 
+import random
+
 class AbstractLeafNode:
     def traverse(self):
-        return self._name
+        return {'name':str(self._name),
+                'unique_name':str(self._unique_name),
+                'status':str(self._status),
+                'type':str(self._type)}
+
+    def traverse_graph(self, graph):
+        """
+        graph should be a networkx graph object
+        returns the name of the graph node for this leaf so
+        you can add an edge from the parent if need be
+        """
+        #  shape = 'ellipse'
+        #  color = 'lightgrey'
+        #  if self._status==SUCCESS:
+            #  color = 'green'
+        #  if self._status==FAILURE:
+            #  color = 'red'
+#
+        #  graph.node(name=self._unique_name,
+                   #  label=str(self._name),
+                   #  shape=shape,
+                   #  color=color,
+                   #  style='filled')
+        graph.add_node(self._unique_name)
+        return self._unique_name
 
 class AbstractBranchNode:
     def traverse(self):
+        if self._name == 'root':
+            self._unique_name = 'R'
+
         r = []
+        i = 0
         for child in self._children:
+            child._unique_name = self._unique_name+str(i)
+            i += 1
             r.append(child.traverse())
-        return r
+        return {'name':str(self._name),
+                'unique_name':str(self._unique_name),
+                'status':str(self._status),
+                'type':str(self._type),
+                'children':r}
+
+    def traverse_graph(self, graph):
+        """
+        graph should be a networkx graph object
+        returns the name of the graph node for this leaf so
+        you can add an edge from the parent if need be
+
+        adds edges to the children from this node
+        """
+        #  shape = 'square'
+        #  color = 'lightgrey'
+        #  if self._status==SUCCESS:
+            #  color = 'green'
+        #  if self._status==FAILURE:
+            #  color = 'red'
+#
+        #  graph.node(name=self._unique_name,
+                   #  label=str(self._type),
+                   #  shape=shape,
+                   #  color=color,
+                   #  style='filled')
+        graph.add_node(self._unique_name)
+
+        for child in self._children:
+            child_name = child.traverse_graph(graph)
+            graph.add_edge(self._unique_name, child_name)
+
+        return self._unique_name
 
 
 class ActionNodeLeaf(AbstractLeafNode):
@@ -38,6 +102,8 @@ class ActionNodeLeaf(AbstractLeafNode):
     def __init__(self, name, goal='no_goal', goal_fn=None):
         # this name should be the same as a running bt_action_node
         self._name = name
+        self._type = 'ROS_Action'
+        self._unique_name = None
 
         # None means not checked
         # = {SUCCESS, FAILURE, RUNNING}
@@ -167,6 +233,9 @@ class InstantLeaf(AbstractLeafNode):
 
     def __init__(self, name, instant_act_function, *args, **kwargs):
         self._name = name
+        self._type = 'Action'
+        self._unique_name = None
+
         self._instant_act_function = instant_act_function
         self._args = args
         self._kwargs = kwargs
@@ -214,6 +283,9 @@ class Seq(AbstractBranchNode):
         else:
             self._children = children
         self._name = name
+        self._unique_name = None
+        self._type = '-->'
+
         self._status = None
         self._status_string = 'None'
 
@@ -270,6 +342,9 @@ class Fallback(AbstractBranchNode):
         else:
             self._children = children
         self._name = name
+        self._type = ' ? '
+        self._unique_name = None
+
         self._status = None
         self._status_string = 'None'
 
@@ -321,6 +396,9 @@ class Negate(AbstractBranchNode):
         #  so we maintain interface with other 'has-a-child' nodes
         self._children = [child]
         self._name = '!('+child._name+')'
+        self._type = ' ! '
+        self._unique_name = '!'+child._unique_name
+
         self._status = None
         self._status_string = 'None'
 
