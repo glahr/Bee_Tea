@@ -340,28 +340,70 @@ viz_graph = pg.GraphItem()
 # add to view
 view.addItem(viz_graph)
 
-root_children = root.traverse()['children']
+root_node = root.traverse()
 # this will define the order of all nodes going forward
-ordered_node_unames = [root._unique_name]
-ordered_node_pos = [pos_dict[root._unique_name]]
-children_queue = root_children
-while len(children_queue) > 0:
-    child = children_queue[0]
-    children_queue = children_queue[1:]
-    uname = child['unique_name']
+ordered_node_unames = []
+# node positions, same order as names
+ordered_node_pos = []
+# adjacency list of index pairs
+adj = []
+# (rgba width) list of colors
+lines = []
+node_fills = []
+node_lines = []
+# status of each node in the same order as the unames
+ordered_node_status = []
+
+# we will put all children into a queue, this creates
+# a natural ordering of all nodes
+node_queue = [root_node]
+
+# emulate a do-while loop to also process the root node in one chunk
+queue_empty = False
+while not queue_empty:
+    # dequeue
+    node = node_queue[0]
+    node_queue = node_queue[1:]
+
+    # child is a dict of stuff
+    uname = node['unique_name']
     ordered_node_unames.append(uname)
     ordered_node_pos.append(pos_dict[uname])
+    ordered_node_status.append(node['status'])
+
+    # color the nodes according to their status
+    status = node['status']
+    if status == FAILURE:
+        # red
+        c = pg.mkBrush((255,0,0,255))
+        l = pg.mkPen((255,0,0,255))
+    elif status == SUCCESS:
+        # green
+        c = pg.mkBrush((0, 255, 0, 255))
+        l = pg.mkPen((0, 255, 0, 255))
+    elif status == RUNNING:
+        # thick blue
+        c = pg.mkBrush((0, 0, 255, 255))
+        l = pg.mkPen((0, 0, 255, 255))
+    else:
+        # unticked, thin grey
+        c = pg.mkBrush((150, 150, 150, 255))
+        l = pg.mkPen((150, 150, 150, 255))
+    node_fills.append(c)
+    node_lines.append(l)
+
     try:
-        new_children = child['children']
-        children_queue.extend(new_children)
+        new_nodes = node['children']
+        node_queue.extend(new_nodes)
     except KeyError:
         # no children for this node
         pass
 
+    queue_empty = len(node_queue) <= 0
+
 # we can find the edge between a child and parent from their unique names easily
 # R0 is R's child, R000 is R00's child
 # XYZ is XY's child
-adj = []
 for i,uname in enumerate(ordered_node_unames):
     if i == 0:
         # skip the root, we know it has no parents
@@ -372,10 +414,34 @@ for i,uname in enumerate(ordered_node_unames):
     parent_i = ordered_node_unames.index(parent_uname)
     adj.append( (parent_i, i) )
 
+    # color the lines according to the status of the child
+    status = ordered_node_status[i]
+    if status == FAILURE:
+        # red
+        line = (255, 0, 0, 255, 2)
+    elif status == SUCCESS:
+        # green
+        line = (0, 255, 0, 255, 2)
+    elif status == RUNNING:
+        # thick blue
+        line = (0, 0, 255, 255, 5)
+    else:
+        # unticked, thin grey
+        line = (150, 150, 150, 255, 1)
+    lines.append(line)
 
 
 ordered_node_pos = np.array(ordered_node_pos)
 adj = np.array(adj)
-viz_graph.setData(pos=ordered_node_pos, adj=adj)
+lines = np.array(lines, dtype=[('red',np.ubyte),
+                               ('green',np.ubyte),
+                               ('blue',np.ubyte),
+                               ('alpha',np.ubyte),
+                               ('width',float)])
+viz_graph.setData(pos=ordered_node_pos,
+                  adj=adj,
+                  pen=lines,
+                  symbolBrush = node_fills,
+                  symbolPen = node_lines)
 
 
