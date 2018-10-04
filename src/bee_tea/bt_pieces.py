@@ -16,7 +16,11 @@ from bee_tea.bt_states import SUCCESS, FAILURE, RUNNING
 import random
 
 class AbstractLeafNode:
-    def traverse(self):
+    def traverse(self, **kwargs):
+        '''
+        kwargs here just to absorb any keyword args passed
+        '''
+
         return {'name':str(self._name),
                 'unique_name':str(self._unique_name),
                 'status':str(self._status),
@@ -28,32 +32,29 @@ class AbstractLeafNode:
         returns the name of the graph node for this leaf so
         you can add an edge from the parent if need be
         """
-        #  shape = 'ellipse'
-        #  color = 'lightgrey'
-        #  if self._status==SUCCESS:
-            #  color = 'green'
-        #  if self._status==FAILURE:
-            #  color = 'red'
-#
-        #  graph.node(name=self._unique_name,
-                   #  label=str(self._name),
-                   #  shape=shape,
-                   #  color=color,
-                   #  style='filled')
         graph.add_node(self._unique_name)
         return self._unique_name
 
 class AbstractBranchNode:
-    def traverse(self):
+
+    def traverse(self, recurse=True):
+        '''
+        if not recursive, the children are not traversed
+        '''
+
         if self._name == 'root':
             self._unique_name = 'R'
 
         r = []
         i = 0
         for child in self._children:
-            child._unique_name = self._unique_name+str(i)
+            child._unique_name = self._unique_name+'-'+str(i)
             i += 1
-            r.append(child.traverse())
+            if recurse:
+                r.append(child.traverse())
+            else:
+                r.append(child._unique_name)
+
         return {'name':str(self._name),
                 'unique_name':str(self._unique_name),
                 'status':str(self._status),
@@ -68,18 +69,6 @@ class AbstractBranchNode:
 
         adds edges to the children from this node
         """
-        #  shape = 'square'
-        #  color = 'lightgrey'
-        #  if self._status==SUCCESS:
-            #  color = 'green'
-        #  if self._status==FAILURE:
-            #  color = 'red'
-#
-        #  graph.node(name=self._unique_name,
-                   #  label=str(self._type),
-                   #  shape=shape,
-                   #  color=color,
-                   #  style='filled')
         graph.add_node(self._unique_name)
 
         for child in self._children:

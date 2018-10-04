@@ -311,12 +311,71 @@ root.tick()
 print(root.display(0))
 print(root.traverse())
 
-import graphviz as gv
 import networkx as nx
 import matplotlib.pyplot as plt
-G = nx.DiGraph()
+plt.ion()
+G = nx.OrderedGraph()
 root.traverse_graph(G)
-pos = nx.drawing.nx_pydot.graphviz_layout(G, 'dot')
-nx.draw(G, pos=pos)
+pos_dict = nx.drawing.nx_pydot.graphviz_layout(G, prog='dot')
+# do not use together with pyqtgraph, somehow blocks eachother
+#  nx.draw(G, pos=pos, with_labels=True)
+
+
+import numpy as np
+import pyqtgraph as pg
+from pyqtgraph.Qt import QtCore, QtGui
+
+# enable antialiasing
+pg.setConfigOptions(antialias=True)
+
+# createa a window
+window = pg.GraphicsWindow()
+window.setWindowTitle('Bee Tea')
+# a view box, literally where stuff is drawn
+view = window.addViewBox()
+# no wonkiness please
+view.setAspectLocked()
+# the visual graph, separate from the networkx graph up above
+viz_graph = pg.GraphItem()
+# add to view
+view.addItem(viz_graph)
+
+root_children = root.traverse()['children']
+# this will define the order of all nodes going forward
+ordered_node_unames = [root._unique_name]
+ordered_node_pos = [pos_dict[root._unique_name]]
+children_queue = root_children
+while len(children_queue) > 0:
+    child = children_queue[0]
+    children_queue = children_queue[1:]
+    uname = child['unique_name']
+    ordered_node_unames.append(uname)
+    ordered_node_pos.append(pos_dict[uname])
+    try:
+        new_children = child['children']
+        children_queue.extend(new_children)
+    except KeyError:
+        # no children for this node
+        pass
+
+# we can find the edge between a child and parent from their unique names easily
+# R0 is R's child, R000 is R00's child
+# XYZ is XY's child
+adj = []
+for i,uname in enumerate(ordered_node_unames):
+    if i == 0:
+        # skip the root, we know it has no parents
+        continue
+
+    # unames are constructed so that uname = parent_uname+'-'+child_index
+    parent_uname = '-'.join(uname.split('-')[:-1])
+    parent_i = ordered_node_unames.index(parent_uname)
+    adj.append( (parent_i, i) )
+
+
+
+ordered_node_pos = np.array(ordered_node_pos)
+adj = np.array(adj)
+viz_graph.setData(pos=ordered_node_pos, adj=adj)
 
 
