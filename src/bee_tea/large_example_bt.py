@@ -197,251 +197,120 @@ def make_instant_post_condition_subtree(subtree_name,
     return fb
 
 
-# the Lolo object that has all the instant functions and such
-L = porto_lolo()
+def make_large_tree():
+    # the Lolo object that has all the instant functions and such
+    L = porto_lolo()
 
-# root sequence
-root = Seq('root')
+    # root sequence
+    root = Seq('root')
 
-# safety 1 subtree
-safety1 = Fallback('Safety 1')
-root.add_child(safety1)
+    # safety 1 subtree
+    safety1 = Fallback('Safety 1')
+    root.add_child(safety1)
 
-s1_seq1 = Seq('safety1_seq_1')
-safety1.add_child(s1_seq1)
+    s1_seq1 = Seq('safety1_seq_1')
+    safety1.add_child(s1_seq1)
 
-s1_seq1.add_child(InstantLeaf('Mission not aborted?', L.mission_not_aborted))
-s1_seq1.add_child(InstantLeaf('Able to ascend/descend?', L.able_to_descend_or_ascend))
-s1_seq1.add_child(InstantLeaf('Actuator operational?', L.actuator_operational))
-s1_seq1.add_child(InstantLeaf('Prop operational?', L.prop_operational))
-s1_seq1.add_child(InstantLeaf('No leaks?', L.no_leaks))
-s1_seq1.add_child(InstantLeaf('Depth ok?', L.depth_ok))
+    s1_seq1.add_child(InstantLeaf('Mission not aborted?', L.mission_not_aborted))
+    s1_seq1.add_child(InstantLeaf('Able to ascend/descend?', L.able_to_descend_or_ascend))
+    s1_seq1.add_child(InstantLeaf('Actuator operational?', L.actuator_operational))
+    s1_seq1.add_child(InstantLeaf('Prop operational?', L.prop_operational))
+    s1_seq1.add_child(InstantLeaf('No leaks?', L.no_leaks))
+    s1_seq1.add_child(InstantLeaf('Depth ok?', L.depth_ok))
 
-s1_seq2 = Seq('safety1_seq_2')
-safety1.add_child(s1_seq2)
+    s1_seq2 = Seq('safety1_seq_2')
+    safety1.add_child(s1_seq2)
 
-s1_seq2.add_child(InstantLeaf('Set Mission Abort', L.set_mission_abort))
-s1_seq2.add_child(InstantLeaf('Drop weight', L.drop_weight))
-s1_seq2.add_child(InstantLeaf('Go to surface', L.go_to_surface))
-
-
-# safety 2 subtree
-safety2 = Fallback('Safety 2')
-root.add_child(safety2)
-
-safety2.add_child(InstantLeaf('Path obstacle free', L.path_obstacle_free))
-safety2.add_child(InstantLeaf('Avoid obstacle in dorection of next WP', L.avoid_obstacle_in_direction_of_next_WP))
+    s1_seq2.add_child(InstantLeaf('Set Mission Abort', L.set_mission_abort))
+    s1_seq2.add_child(InstantLeaf('Drop weight', L.drop_weight))
+    s1_seq2.add_child(InstantLeaf('Go to surface', L.go_to_surface))
 
 
-# system prep subtree
-sysprep = Fallback('System Preparation')
-root.add_child(sysprep)
+    # safety 2 subtree
+    safety2 = Fallback('Safety 2')
+    root.add_child(safety2)
 
-sysprep.add_child(InstantLeaf('Continue command received', L.continue_command_received))
-
-sysprep_seq = Seq('sysprep_seq')
-sysprep.add_child(sysprep_seq)
-sysprep_seq.add_child(make_instant_post_condition_subtree('away_from_ship',
-                                                          'Away from ship?', L.away_from_ship,
-                                                          'Keep distance', L.keep_distance))
-sysprep_seq.add_child(make_instant_post_condition_subtree('go_command_received',
-                                                          'Go command received', L.go_command_received,
-                                                          'Wait', L.wait))
-sysprep_seq.add_child(make_instant_post_condition_subtree('compass_calibrated',
-                                                          'Compass calibrated?', L.compass_calibrated,
-                                                          'Calibrate compass', L.calibrate_compass))
-sysprep_seq.add_child(make_instant_post_condition_subtree('payload_on',
-                                                          'Payload on?', L.payload_on,
-                                                          'Turn on payload', L.turn_on_payload))
-sysprep_seq.add_child(make_instant_post_condition_subtree('at_target_depth',
-                                                          'At target depth?', L.at_target_depth,
-                                                          'Adjust depth', L.adjust_depth))
-sysprep_seq.add_child(make_instant_post_condition_subtree('continue_command_received',
-                                                          'Continue command received', L.continue_command_received,
-                                                          'Wait', L.wait))
-
-# mission synch subtree
-mission_sync = Fallback('Mission Synchornisation')
-root.add_child(mission_sync)
-
-mission_sync.add_child(InstantLeaf('Mission synchronized', L.mission_synchronized))
-msync_seq = Seq('msync_seq')
-mission_sync.add_child(msync_seq)
-
-msync_seq.add_child(make_instant_post_condition_subtree('no_goto_surface_command',
-                                                        'No "goto surface" command',L.no_goto_surface_command,
-                                                        'Surface', L.surface))
-msync_seq.add_child(make_instant_post_condition_subtree('no_user_commanded_waypoints',
-                                                        'No user commanded waypoints', L.no_user_commanded_waypoints,
-                                                        'Update waypoints', L.update_waypoints))
-msync_seq.add_child(make_instant_post_condition_subtree('no_autonomy_comanded_way_points',
-                                                        'No autonomy commanded waypoints',L.no_autonomy_comanded_way_points,
-                                                        'Update waypoints', L.update_waypoints))
-
-# mission exec. subtree
-mission_exec = Fallback('Mission Execution')
-root.add_child(mission_exec)
-
-mission_exec.add_child(InstantLeaf('Mission complete(all waypoints visited)?',L.mission_complete))
-mexec_seq = Seq('mexec_seq')
-mission_exec.add_child(mexec_seq)
-mexec_seq.add_child(make_instant_post_condition_subtree('at_target_waypoint',
-                                                        'At target waypoint', L.at_target_waypoint,
-                                                        'Go to target waypoint', L.go_to_target_waypoint))
-
-mexec_seq.add_child(InstantLeaf('Target waypoint <-- next waypoint', L.set_target_waypoint_to_next_waypoint))
-
-# mission finalization subtree
-mission_final = Fallback('Mission Finalisation')
-root.add_child(mission_final)
-mission_final.add_child(InstantLeaf('Mission finalized (at surface with payload turned off)?',L.mission_finalized))
-mfinal_seq = Seq('mfinal_seq')
-mission_final.add_child(mfinal_seq)
-mfinal_seq.add_child(make_instant_post_condition_subtree('at_surface',
-                                                         'At surface?', L.at_surface,
-                                                         'Go to surface', L.go_to_surface))
-mfinal_seq.add_child(make_instant_post_condition_subtree('payload_off',
-                                                         'Payload off?', L.payload_off,
-                                                         'Shutdown payload', L.shutdown_payload))
+    safety2.add_child(InstantLeaf('Path obstacle free', L.path_obstacle_free))
+    safety2.add_child(InstantLeaf('Avoid obstacle in dorection of next WP', L.avoid_obstacle_in_direction_of_next_WP))
 
 
+    # system prep subtree
+    sysprep = Fallback('System Preparation')
+    root.add_child(sysprep)
 
-print(root.display(0))
-root.tick()
-print(root.display(0))
-print(root.traverse())
+    sysprep.add_child(InstantLeaf('Continue command received', L.continue_command_received))
 
-import networkx as nx
-import matplotlib.pyplot as plt
-plt.ion()
-G = nx.OrderedGraph()
-root.traverse_graph(G)
-pos_dict = nx.drawing.nx_pydot.graphviz_layout(G, prog='dot')
-# do not use together with pyqtgraph, somehow blocks eachother
-#  nx.draw(G, pos=pos, with_labels=True)
+    sysprep_seq = Seq('sysprep_seq')
+    sysprep.add_child(sysprep_seq)
+    sysprep_seq.add_child(make_instant_post_condition_subtree('away_from_ship',
+                                                              'Away from ship?', L.away_from_ship,
+                                                              'Keep distance', L.keep_distance))
+    sysprep_seq.add_child(make_instant_post_condition_subtree('go_command_received',
+                                                              'Go command received', L.go_command_received,
+                                                              'Wait', L.wait))
+    sysprep_seq.add_child(make_instant_post_condition_subtree('compass_calibrated',
+                                                              'Compass calibrated?', L.compass_calibrated,
+                                                              'Calibrate compass', L.calibrate_compass))
+    sysprep_seq.add_child(make_instant_post_condition_subtree('payload_on',
+                                                              'Payload on?', L.payload_on,
+                                                              'Turn on payload', L.turn_on_payload))
+    sysprep_seq.add_child(make_instant_post_condition_subtree('at_target_depth',
+                                                              'At target depth?', L.at_target_depth,
+                                                              'Adjust depth', L.adjust_depth))
+    sysprep_seq.add_child(make_instant_post_condition_subtree('continue_command_received',
+                                                              'Continue command received', L.continue_command_received,
+                                                              'Wait', L.wait))
 
+    # mission synch subtree
+    mission_sync = Fallback('Mission Synchornisation')
+    root.add_child(mission_sync)
 
-import numpy as np
-import pyqtgraph as pg
-from pyqtgraph.Qt import QtCore, QtGui
+    mission_sync.add_child(InstantLeaf('Mission synchronized', L.mission_synchronized))
+    msync_seq = Seq('msync_seq')
+    mission_sync.add_child(msync_seq)
 
-# enable antialiasing
-pg.setConfigOptions(antialias=True)
+    msync_seq.add_child(make_instant_post_condition_subtree('no_goto_surface_command',
+                                                            'No "goto surface" command',L.no_goto_surface_command,
+                                                            'Surface', L.surface))
+    msync_seq.add_child(make_instant_post_condition_subtree('no_user_commanded_waypoints',
+                                                            'No user commanded waypoints', L.no_user_commanded_waypoints,
+                                                            'Update waypoints', L.update_waypoints))
+    msync_seq.add_child(make_instant_post_condition_subtree('no_autonomy_comanded_way_points',
+                                                            'No autonomy commanded waypoints',L.no_autonomy_comanded_way_points,
+                                                            'Update waypoints', L.update_waypoints))
 
-# createa a window
-window = pg.GraphicsWindow()
-window.setWindowTitle('Bee Tea')
-# a view box, literally where stuff is drawn
-view = window.addViewBox()
-# no wonkiness please
-view.setAspectLocked()
-# the visual graph, separate from the networkx graph up above
-viz_graph = pg.GraphItem()
-# add to view
-view.addItem(viz_graph)
+    # mission exec. subtree
+    mission_exec = Fallback('Mission Execution')
+    root.add_child(mission_exec)
 
-root_node = root.traverse()
-# this will define the order of all nodes going forward
-ordered_node_unames = []
-# node positions, same order as names
-ordered_node_pos = []
-# adjacency list of index pairs
-adj = []
-# (rgba width) list of colors
-lines = []
-node_fills = []
-node_lines = []
-# status of each node in the same order as the unames
-ordered_node_status = []
+    mission_exec.add_child(InstantLeaf('Mission complete(all waypoints visited)?',L.mission_complete))
+    mexec_seq = Seq('mexec_seq')
+    mission_exec.add_child(mexec_seq)
+    mexec_seq.add_child(make_instant_post_condition_subtree('at_target_waypoint',
+                                                            'At target waypoint', L.at_target_waypoint,
+                                                            'Go to target waypoint', L.go_to_target_waypoint))
 
-# we will put all children into a queue, this creates
-# a natural ordering of all nodes
-node_queue = [root_node]
+    mexec_seq.add_child(InstantLeaf('Target waypoint <-- next waypoint', L.set_target_waypoint_to_next_waypoint))
 
-# emulate a do-while loop to also process the root node in one chunk
-queue_empty = False
-while not queue_empty:
-    # dequeue
-    node = node_queue[0]
-    node_queue = node_queue[1:]
-
-    # child is a dict of stuff
-    uname = node['unique_name']
-    ordered_node_unames.append(uname)
-    ordered_node_pos.append(pos_dict[uname])
-    ordered_node_status.append(node['status'])
-
-    # color the nodes according to their status
-    status = node['status']
-    if status == FAILURE:
-        # red
-        c = pg.mkBrush((255,0,0,255))
-        l = pg.mkPen((255,0,0,255))
-    elif status == SUCCESS:
-        # green
-        c = pg.mkBrush((0, 255, 0, 255))
-        l = pg.mkPen((0, 255, 0, 255))
-    elif status == RUNNING:
-        # thick blue
-        c = pg.mkBrush((0, 0, 255, 255))
-        l = pg.mkPen((0, 0, 255, 255))
-    else:
-        # unticked, thin grey
-        c = pg.mkBrush((150, 150, 150, 255))
-        l = pg.mkPen((150, 150, 150, 255))
-    node_fills.append(c)
-    node_lines.append(l)
-
-    try:
-        new_nodes = node['children']
-        node_queue.extend(new_nodes)
-    except KeyError:
-        # no children for this node
-        pass
-
-    queue_empty = len(node_queue) <= 0
-
-# we can find the edge between a child and parent from their unique names easily
-# R0 is R's child, R000 is R00's child
-# XYZ is XY's child
-for i,uname in enumerate(ordered_node_unames):
-    if i == 0:
-        # skip the root, we know it has no parents
-        continue
-
-    # unames are constructed so that uname = parent_uname+'-'+child_index
-    parent_uname = '-'.join(uname.split('-')[:-1])
-    parent_i = ordered_node_unames.index(parent_uname)
-    adj.append( (parent_i, i) )
-
-    # color the lines according to the status of the child
-    status = ordered_node_status[i]
-    if status == FAILURE:
-        # red
-        line = (255, 0, 0, 255, 2)
-    elif status == SUCCESS:
-        # green
-        line = (0, 255, 0, 255, 2)
-    elif status == RUNNING:
-        # thick blue
-        line = (0, 0, 255, 255, 5)
-    else:
-        # unticked, thin grey
-        line = (150, 150, 150, 255, 1)
-    lines.append(line)
+    # mission finalization subtree
+    mission_final = Fallback('Mission Finalisation')
+    root.add_child(mission_final)
+    mission_final.add_child(InstantLeaf('Mission finalized (at surface with payload turned off)?',L.mission_finalized))
+    mfinal_seq = Seq('mfinal_seq')
+    mission_final.add_child(mfinal_seq)
+    mfinal_seq.add_child(make_instant_post_condition_subtree('at_surface',
+                                                             'At surface?', L.at_surface,
+                                                             'Go to surface', L.go_to_surface))
+    mfinal_seq.add_child(make_instant_post_condition_subtree('payload_off',
+                                                             'Payload off?', L.payload_off,
+                                                             'Shutdown payload', L.shutdown_payload))
 
 
-ordered_node_pos = np.array(ordered_node_pos)
-adj = np.array(adj)
-lines = np.array(lines, dtype=[('red',np.ubyte),
-                               ('green',np.ubyte),
-                               ('blue',np.ubyte),
-                               ('alpha',np.ubyte),
-                               ('width',float)])
-viz_graph.setData(pos=ordered_node_pos,
-                  adj=adj,
-                  pen=lines,
-                  symbolBrush = node_fills,
-                  symbolPen = node_lines)
+
+    print(root.display(0))
+    root.tick()
+    print(root.display(0))
+    print(root.traverse())
+    return root
 
 
