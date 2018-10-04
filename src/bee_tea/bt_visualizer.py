@@ -36,20 +36,21 @@ class LabeledDraggableGraph(pg.GraphItem):
 
     def setData(self, **kwds):
         self.text = kwds.pop('text', [])
+        self.textbox = kwds.pop('textbox', [])
         self.data = kwds
         if 'pos' in self.data:
             npts = self.data['pos'].shape[0]
             self.data['data'] = np.empty(npts, dtype=[('index', int)])
             self.data['data']['index'] = np.arange(npts)
-        self.setTexts(self.text)
+        self.setTexts(self.text, self.textbox)
         self.updateGraph()
 
-    def setTexts(self, text):
+    def setTexts(self, text, textbox):
         for i in self.textItems:
             i.scene().removeItem(i)
         self.textItems = []
-        for t in text:
-            item = pg.TextItem(t)
+        for t,tb in zip(text, textbox):
+            item = pg.TextItem(t, anchor=(0.5, 0.5), color='k', border=tb['border'], fill=tb['fill'])
             self.textItems.append(item)
             item.setParentItem(self)
 
@@ -101,6 +102,7 @@ pos_dict = nx.drawing.nx_pydot.graphviz_layout(G, prog='dot')
 
 # enable antialiasing
 pg.setConfigOptions(antialias=True)
+pg.setConfigOption('background', 'w')
 
 # createa a window
 window = pg.GraphicsWindow()
@@ -124,9 +126,9 @@ ordered_node_pos = []
 adj = []
 # (rgba width) list of colors
 lines = []
-node_fills = []
-node_lines = []
-node_symbols = []
+# textboxes should contain ['border':pen, 'fill':brush]
+# to create a box around the label
+textboxes = []
 node_labels = []
 # status of each node in the same order as the unames
 ordered_node_status = []
@@ -166,21 +168,12 @@ while not queue_empty:
         # unticked, thin grey
         c = pg.mkBrush((150, 150, 150, 255))
         l = pg.mkPen((150, 150, 150, 255))
-    node_fills.append(c)
-    node_lines.append(l)
+    textboxes.append({'border':l, 'fill':c})
 
     node_type = node['type']
     if node_type == '-->' or node_type==' ? ':
-        # square
-        node_symbols.append('s')
         node_labels.append(node_type)
-    elif node_type == 'Action':
-        # circle
-        node_symbols.append('o')
-        node_labels.append(node['name'])
     else:
-        # diamond
-        node_symbols.append('d')
         node_labels.append(node['name'])
 
     try:
@@ -233,9 +226,9 @@ lines = np.array(lines, dtype=[('red',np.ubyte),
 viz_graph.setData(pos=ordered_node_pos,
                   adj=adj,
                   pen=lines,
-                  symbolBrush = node_fills,
-                  symbolPen = node_lines,
-                  symbol= node_symbols,
-                  text = node_labels)
+                  symbolBrush = None,
+                  symbolPen = None,
+                  text = node_labels,
+                  textbox = textboxes)
 
 
