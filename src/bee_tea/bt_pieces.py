@@ -36,6 +36,15 @@ class AbstractLeafNode:
         return self._unique_name
 
 class AbstractBranchNode:
+    def add_child(self, child):
+        self._children.append(child)
+
+    def preempt(self):
+        for child in self._children:
+            child.preempt()
+
+        self._status_string = str(self._status)+ ' -> None (Preempt)'
+        self._status = None
 
     def traverse(self, recurse=True):
         '''
@@ -143,6 +152,7 @@ class ActionNodeLeaf(AbstractLeafNode):
             rospy.loginfo(self._name+' started')
 
             self._status_string = 'None -> RUNNING'
+            self._status = RUNNING
             return RUNNING
 
         elif self._status == SUCCESS or self._status == FAILURE:
@@ -278,8 +288,6 @@ class Seq(AbstractBranchNode):
         self._status = None
         self._status_string = 'None'
 
-    def add_child(self, child):
-        self._children.append(child)
 
     def tick(self):
         for i in range(len(self._children)):
@@ -287,7 +295,7 @@ class Seq(AbstractBranchNode):
             r = child.tick()
 
             # if success, we will tick the next one
-            # and not return
+            # and not return or preempt the other children
             if r != SUCCESS:
                 self._status_string = str(self._status)+' -> '+str(r)
                 self._status = r
@@ -303,14 +311,6 @@ class Seq(AbstractBranchNode):
         self._status_string = str(self._status)+' -> SUCCESS'
         self._status = SUCCESS
         return SUCCESS
-
-    def preempt(self):
-        if self._status == RUNNING:
-            for child in self._children:
-                child.preempt()
-
-            self._status_string = str(self._status)+ ' -> None (Preempt)'
-            self._status = None
 
     def display(self, level):
         s = level*'   '+'SEQ:'+str(self._name)+':'+str(self._status)+'\n'
@@ -337,9 +337,6 @@ class Fallback(AbstractBranchNode):
         self._status = None
         self._status_string = 'None'
 
-    def add_child(self, child):
-        self._children.append(child)
-
     def tick(self):
         for i in range(len(self._children)):
             child = self._children[i]
@@ -362,13 +359,6 @@ class Fallback(AbstractBranchNode):
         self._status = FAILURE
         return FAILURE
 
-    def preempt(self):
-        if self._status == RUNNING:
-            for child in self._children:
-                child.preempt()
-
-            self._status_string = str(self._status)+ ' -> None (Preempt)'
-            self._status = None
 
     def display(self, level):
         s = level*'   '+'FB:'+str(self._name)+':'+str(self._status)+'\n'
@@ -409,6 +399,9 @@ class Negate(AbstractBranchNode):
     def display(self, level):
         s = level*'   '+'['+self._name+']:'+str(self._status)+'\n'
         return s
+
+    def add_child(self, child):
+        self._children[0] = child
 
     def preempt(self):
         """
