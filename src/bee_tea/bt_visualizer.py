@@ -94,6 +94,8 @@ class LabeledDraggableGraph(pg.GraphItem):
         print("clicked: %s" % pts)
 
 
+clicked = None
+
 root = make_large_tree()
 
 G = nx.OrderedGraph()
@@ -224,6 +226,8 @@ lines = np.array(lines, dtype=[('red',np.ubyte),
                                ('width',float)])
 
 viz_graph.setData(pos=ordered_node_pos,
+                  size=50,
+                  symbol='s',
                   adj=adj,
                   pen=lines,
                   symbolBrush = None,
