@@ -24,7 +24,8 @@ class AbstractLeafNode:
         r={'label':str(self._name),
            'id':self._unique_name,
            'status':str(self._status),
-           'type':str(self._type)}
+           'type':str(self._type),
+           'children':[]}
 
         return r
 
