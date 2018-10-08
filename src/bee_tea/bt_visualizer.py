@@ -23,16 +23,20 @@ from large_example_bt import make_large_tree
 
 
 class LabeledDraggableGraph(pg.GraphItem):
-    def __init__(self):
+    def __init__(self, window, ordered_node_unames):
         """
         lifted from the pyqtgraph examples
+
+        window is a GraphicsWindow taht this Graph is added to in the end
         """
 
         self.dragPoint = None
         self.dragOffset = None
         self.textItems = []
         pg.GraphItem.__init__(self)
-        self.scatter.sigClicked.connect(self.clicked)
+        window.scene().sigMouseClicked.connect(self.clicked)
+
+        self.ordered_node_unames = ordered_node_unames
 
     def setData(self, **kwds):
         self.text = kwds.pop('text', [])
@@ -90,34 +94,33 @@ class LabeledDraggableGraph(pg.GraphItem):
         self.updateGraph()
         ev.accept()
 
-    def clicked(self, pts):
-        print("clicked: %s" % pts)
+    def clicked(self, ev):
+        if ev.button() == QtCore.Qt.LeftButton:
+            # this is aleft button click on a graph piece, minimize/maximize it
+            pos = ev.pos()
+            pts = self.scatter.pointsAt(pos)
+            if len(pts) != 1:
+                # ignore clicks that 'touches' too many things
+                ev.ignore()
+                return
+
+            item_index = pts[0].data()[0]
+            text_of_item = self.textItems[item_index].textItem.toPlainText()
+            print('clicked:', item_index, text_of_item)
+            uname_of_item = self.ordered_node_unames[item_index]
+            print('clicked:', uname_of_item)
+        else:
+            ev.ignore()
 
 
-clicked = None
+
+
 
 root = make_large_tree()
 
 G = nx.OrderedGraph()
 root.traverse_graph(G)
 pos_dict = nx.drawing.nx_pydot.graphviz_layout(G, prog='dot')
-
-# enable antialiasing
-pg.setConfigOptions(antialias=True)
-pg.setConfigOption('background', 'w')
-
-# createa a window
-window = pg.GraphicsWindow()
-window.setWindowTitle('Bee Tea')
-# a view box, literally where stuff is drawn
-view = window.addViewBox()
-# no wonkiness please
-view.setAspectLocked()
-# the visual graph, separate from the networkx graph up above
-#  viz_graph = pg.GraphItem()
-viz_graph = LabeledDraggableGraph()
-# add to view
-view.addItem(viz_graph)
 
 root_node = root.traverse()
 # this will define the order of all nodes going forward
@@ -224,6 +227,24 @@ lines = np.array(lines, dtype=[('red',np.ubyte),
                                ('blue',np.ubyte),
                                ('alpha',np.ubyte),
                                ('width',float)])
+
+
+# enable antialiasing
+pg.setConfigOptions(antialias=True)
+pg.setConfigOption('background', 'w')
+
+# createa a window
+window = pg.GraphicsWindow()
+window.setWindowTitle('Bee Tea')
+# a view box, literally where stuff is drawn
+view = window.addViewBox()
+# no wonkiness please
+view.setAspectLocked()
+# the visual graph, separate from the networkx graph up above
+#  viz_graph = pg.GraphItem()
+viz_graph = LabeledDraggableGraph(window, ordered_node_unames)
+# add to view
+view.addItem(viz_graph)
 
 viz_graph.setData(pos=ordered_node_pos,
                   size=50,
