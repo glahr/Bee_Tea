@@ -21,10 +21,12 @@ class AbstractLeafNode:
         kwargs here just to absorb any keyword args passed
         '''
 
-        return {'name':str(self._name),
-                'unique_name':str(self._unique_name),
-                'status':str(self._status),
-                'type':str(self._type)}
+        r={'label':str(self._name),
+           'id':self._unique_name,
+           'status':str(self._status),
+           'type':str(self._type)}
+
+        return r
 
     def traverse_graph(self, graph):
         """
@@ -32,12 +34,19 @@ class AbstractLeafNode:
         returns the name of the graph node for this leaf so
         you can add an edge from the parent if need be
         """
-        graph.add_node(self._unique_name)
+        graph_id = '-'.join(self._unique_name)
+        graph.add_node(graph_id)
         return self._unique_name
 
 class AbstractBranchNode:
+    def __init__(self):
+        # will we show the children of this node?
+        # they will still be processed
+        self.expanded = True
+
     def add_child(self, child):
         self._children.append(child)
+        child.parent = self
 
     def preempt(self):
         for child in self._children:
@@ -52,23 +61,25 @@ class AbstractBranchNode:
         '''
 
         if self._name == 'root':
-            self._unique_name = 'R'
+            self._unique_name = [0]
 
-        r = []
+        c = []
         i = 0
         for child in self._children:
-            child._unique_name = self._unique_name+'-'+str(i)
+            child._unique_name = self._unique_name+[i]
             i += 1
             if recurse:
-                r.append(child.traverse())
+                c.append(child.traverse())
             else:
-                r.append(child._unique_name)
+                c.append(child._unique_name)
 
-        return {'name':str(self._name),
-                'unique_name':str(self._unique_name),
-                'status':str(self._status),
-                'type':str(self._type),
-                'children':r}
+        r={'label':str(self._name),
+           'id':str(self._unique_name),
+           'status':str(self._status),
+           'type':str(self._type),
+           'children':c}
+
+        return r
 
     def traverse_graph(self, graph):
         """
@@ -78,7 +89,8 @@ class AbstractBranchNode:
 
         adds edges to the children from this node
         """
-        graph.add_node(self._unique_name)
+        graph_id = '-'.join(self._unique_name)
+        graph.add_node(graph_id)
 
         for child in self._children:
             child_name = child.traverse_graph(graph)
@@ -100,8 +112,9 @@ class ActionNodeLeaf(AbstractLeafNode):
     def __init__(self, name, goal='no_goal', goal_fn=None):
         # this name should be the same as a running bt_action_node
         self._name = name
-        self._type = 'ROS_Action'
+        self._type = 'ACT'
         self._unique_name = None
+        self.parent = None
 
         # None means not checked
         # = {SUCCESS, FAILURE, RUNNING}
@@ -232,8 +245,9 @@ class InstantLeaf(AbstractLeafNode):
 
     def __init__(self, name, instant_act_function, *args, **kwargs):
         self._name = name
-        self._type = 'Action'
+        self._type = 'ACT'
         self._unique_name = None
+        self.parent = None
 
         self._instant_act_function = instant_act_function
         self._args = args
@@ -277,13 +291,15 @@ class Seq(AbstractBranchNode):
     returns the child's return if its not SUCCESS.
     """
     def __init__(self, name, children=None):
+        AbstractBranchNode.__init__(self)
         if children is None:
             self._children = []
         else:
             self._children = children
         self._name = name
         self._unique_name = None
-        self._type = '-->'
+        self._type = 'SEQ'
+        self.parent = None
 
         self._status = None
         self._status_string = 'None'
@@ -314,8 +330,9 @@ class Seq(AbstractBranchNode):
 
     def display(self, level):
         s = level*'   '+'SEQ:'+str(self._name)+':'+str(self._status)+'\n'
-        for child in self._children:
-            s += str(child.display(level+1))
+        if self.expanded:
+            for child in self._children:
+                s += str(child.display(level+1))
         return s
 
 
@@ -326,13 +343,15 @@ class Fallback(AbstractBranchNode):
     returns the child's return if its not FAILURE
     """
     def __init__(self, name, children=None):
+        AbstractBranchNode.__init__(self)
         if children is None:
             self._children = []
         else:
             self._children = children
         self._name = name
-        self._type = ' ? '
+        self._type = 'FB'
         self._unique_name = None
+        self.parent = None
 
         self._status = None
         self._status_string = 'None'
@@ -362,8 +381,9 @@ class Fallback(AbstractBranchNode):
 
     def display(self, level):
         s = level*'   '+'FB:'+str(self._name)+':'+str(self._status)+'\n'
-        for child in self._children:
-            s += str(child.display(level+1))
+        if self.expanded:
+            for child in self._children:
+                s += str(child.display(level+1))
         return s
 
 class Negate(AbstractBranchNode):
@@ -372,11 +392,13 @@ class Negate(AbstractBranchNode):
     Does not do anything for "RUNNING"
     """
     def __init__(self, child):
+        AbstractBranchNode.__init__(self)
         #  so we maintain interface with other 'has-a-child' nodes
         self._children = [child]
         self._name = '!('+child._name+')'
-        self._type = ' ! '
+        self._type = 'NEG'
         self._unique_name = '!'+child._unique_name
+        self.parent = None
 
         self._status = None
         self._status_string = 'None'

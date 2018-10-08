@@ -307,10 +307,16 @@ def make_large_tree():
 
 
 
-    print(root.display(0))
-    root.tick()
-    print(root.display(0))
-    print(root.traverse())
     return root
+
+
+if __name__=='__main__':
+
+    root = make_large_tree()
+    root.tick()
+    import json
+    with open('large_example_bt.json', 'w') as fout:
+        json.dump(root.traverse(),fout)
+    print(root.traverse())
 
 
