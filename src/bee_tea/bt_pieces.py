@@ -74,7 +74,7 @@ class AbstractBranchNode:
                 c.append(child._unique_name)
 
         r={'label':str(self._name),
-           'id':str(self._unique_name),
+           'id':self._unique_name,
            'status':str(self._status),
            'type':str(self._type),
            'children':c}
