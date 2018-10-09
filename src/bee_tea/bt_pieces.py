@@ -398,7 +398,7 @@ class Negate(AbstractBranchNode):
         self._children = [child]
         self._name = '!('+child._name+')'
         self._type = 'NEG'
-        self._unique_name = '!'+child._unique_name
+        self._unique_name = None
         self.parent = None
 
         self._status = None
