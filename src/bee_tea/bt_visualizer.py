@@ -7,7 +7,6 @@
 
 from __future__ import print_function
 import rospy
-from bee_tea.bt_states import SUCCESS, FAILURE, RUNNING
 
 
 import networkx as nx
@@ -17,39 +16,155 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 
-from large_example_bt import make_large_tree
+
+colors = {'None':(100,100,100,255),
+          'SUCCESS':(0,255,0,255),
+          'FAILURE':(255,0,0,255),
+          'RUNNING':(0,0,255,255)}
+
+# made into tuples so that we can just + with the colors
+widths = {'None':(2,),
+          'SUCCESS':(4,),
+          'FAILURE':(4,),
+          'RUNNING':(6,)}
 
 
 class VisualNode:
     def __init__(self, node, visual_tree, nx_graph):
-        str_id = '-'.join(str(nid) for nid in node['id'])
-        nx_graph.add_node(str_id)
+        self._is_minimized = False
+        self._is_visible = True
 
         self._visual_tree = visual_tree
         self._nx_graph = nx_graph
 
-        self.label = node['label']
-        self.id = node['id']
-        self.str_id = str_id
-        self.status = node['status']
         self.type = node['type']
-        self.children = []
+        # set some stuff at the same time
+        self._change_status(node['status'])
+        self._change_id(node['id'])
+        self._change_label(node['label'])
+        # we may want this at some point since change_label actually modifies the
+        # label slightly
+        self._original_label = node['label']
 
+        nx_graph.add_node(self.str_id)
+
+        self.children = []
+        # this node is adjacent to its children
+        self.adj = []
+        # combine the lines of the children and the adj info into one
+        # so that they are 1-to-1 always
+        self.adjlines = []
+
+        # this will be set by the master tree object, once all the nodes
+        # are done creating themselves
+        self.pos = None
+
+        # order of addition is the same as position in the list of nodes
+        self.index = len(visual_tree._nodes)
         visual_tree.add_node(self)
 
         for child in node['children']:
+            # recurse to create the tree
             visual_child = VisualNode(child, visual_tree, nx_graph)
             self.children.append(visual_child)
-            nx_graph.add_edge(str_id, visual_child.str_id)
+
+            # edges for both visual and analytical graphs
+            nx_graph.add_edge(self.str_id, visual_child.str_id)
+            self.adj.append((self.index, visual_child.index))
+            self.adjlines.append((self.index, visual_child.index, visual_child.line))
+
+
+    def re_index(self, visual_tree, nx_graph):
+        """
+        re-indexes the whole tree
+        and adds each node to the tree node list
+        """
+
+        # re-set these, since some might not exist anymore
+        self.adj = []
+        self.adjlines = []
+
+        # order of addition is the same as position in the list of nodes
+        old_index = self.index
+        self.index = len(visual_tree._nodes)
+        visual_tree.add_node(self)
+
+        for child in self.children:
+            if child._is_visible:
+                child.re_index(visual_tree, nx_graph)
+                # edges for both visual and analytical graphs
+                nx_graph.add_edge(self.str_id, child.str_id)
+                self.adj.append((self.index, child.index))
+                self.adjlines.append((self.index, child.index, child.line))
+
+
+
+    def _change_label(self, label):
+        # we dont want very long labels.
+        # first lets try splitting from spaces
+        label = '\n'.join(label.split(' '))
+        if self._is_minimized:
+            self.label = label
+
+        labels = {'SEQ':'-->',
+                  'FB' :'?',
+                  'ACT':label,
+                  'CON':label,
+                  'NEG':'!'}
+
+        self.label = labels[self.type]
+
+
+    def _change_id(self, new_id):
+        self.id = new_id
+        self.str_id = '-'.join(str(nid) for nid in new_id)
+
+
+    def _change_status(self, new_status):
+        global colors
+        global widths
+        self.status = new_status
+        self.color = colors[self.status]
+        self.line = self.color+widths[self.status]
+        self.brush = pg.mkBrush(self.color)
+        self.pen = pg.mkPen(self.color)
+        self.textbox = {'border':self.pen, 'fill':self.brush}
+
+    def dictify(self):
+        """
+        return a dictionary representation of the tree
+        """
+
+        r = {}
+        r['id'] = self.id
+        r['label'] = self._original_label
+        r['type'] = self.type
+        r['status'] = self.status
+
+        r['children'] = []
+        for child in self.children:
+            r['children'].append(child.dictify())
+
+        return r
+
+    def set_visibilty(self, invisible):
+        self._is_visible = not invisible
+        for child in self.children:
+            child.set_visibilty(invisible)
+
+    def toggle_minimize(self):
+        self._is_minimized = not self._is_minimized
+        for child in self.children:
+            child.set_visibilty(self._is_minimized)
+
 
     def refresh(self, node):
         """
-        refresh the entire tree by re-constructing from the given dict node.
-        if all nodes are unchanged except their status's, the tree is kept as it
+        if all nodes are unchanged except their status's, the tree is kept as is
         and the status are modified.
+        returns True if a complete re-make is required
         """
-
-        self_changed = any([node['label'] != self.label,
+        self_changed = any([node['label'] != self._original_label,
                             node['id'] != self.id,
                             node['type'] != self.type])
 
@@ -65,7 +180,9 @@ class VisualNode:
         if len(self.children) == len(node['children']):
             # are the children unchanged?
             for dict_child, child in zip(node['children'], self.children):
-                children_changed.append(child.refresh(dict_child))
+                child_changed = child.refresh(dict_child)
+                # collect the change flags
+                children_changed.append(child_changed)
 
             # any one could be changed to trigger a re-build
             children_changed = any(children_changed)
@@ -79,7 +196,7 @@ class VisualNode:
 
         # nothing changed, good.
         # just update the status then
-        self.status = node['status']
+        self._change_status(node['status'])
 
         # no change!
         return False
@@ -107,13 +224,52 @@ class VisualTree:
         self._nx_graph = nx.OrderedGraph()
         # construct the graph
         self.root_node = VisualNode(bt_dict, self, self._nx_graph)
+        # create the id->position dictionary
+        self.pos_dict = nx.drawing.nx_pydot.graphviz_layout(self._nx_graph, prog='dot')
 
+        # set the nodes positions
+        for node in self._nodes:
+            node.pos = self.pos_dict[node.str_id]
+
+    def re_index(self):
+        """
+        re-create the indexes and such
+        this takes into account the visibility of each node
+        unlike the first creation
+        """
+        self._nodes = []
+        self._nx_graph = nx.OrderedGraph()
+        self.root_node.re_index(self, self._nx_graph)
 
     def add_node(self, visual_node):
         self._nodes.append(visual_node)
 
+    def _get_from_nodes(self, field):
+        for node in self._nodes:
+            try:
+                if node._is_visible:
+                    yield node.__getattribute__(field)
+                else:
+                    pass
+            except AttributeError:
+                print('AttributeError:',field,'not found in node!')
+                break
 
-    def refresh(self, bt_dict):
+
+    def get_adj_lines(self, all_pos):
+        all_adj = []
+        all_lines = []
+        for node in self._nodes:
+            if node._is_visible:
+                for i1,i2,line in node.adjlines:
+                    all_adj.append((i1,i2))
+                    all_lines.append(line)
+
+        return all_adj, all_lines
+
+
+
+    def refresh(self, bt_dict=None):
         bt_changed = self.root_node.refresh(bt_dict)
         # root node will have checked all the children if there is any
         # breaking changes in the structure of the tree
@@ -125,196 +281,103 @@ class VisualTree:
         return False
 
 
-
-
-
-
-def traverse_graph(node, graph):
-    """
-    node should be a dict of dicts, where children are sub-dicts.
-    expected fields are: id, label, status, children, type
-    graph should be a networkx graph object which will be modified
-    """
-    str_nid = '-'.join(str(nid) for nid in node['id'])
-    graph.add_node(str_nid)
-
-    for child in node['children']:
-        child_str_nid = traverse_graph(child, graph)
-        graph.add_edge(str_nid, child_str_nid)
-
-    return str_nid
-
-
-class BT_Visual(pg.GraphItem):
-    def __init__(self, root):
+    def get_visuals(self):
         """
-        A complete visualiser for a behaviour tree.
-        root should be the root node of the tree.
+        return an array of pos, adj, lines and a list of text and textboxes
         """
+        # one per node
+        self.all_pos = np.array(list(self._get_from_nodes('pos')))
+        self.all_text = np.array(list(self._get_from_nodes('label')))
+        self.all_textbox = np.array(list(self._get_from_nodes('textbox')))
 
-        # needed when initting the superclass
+        # many per node
+        edges, lines = self.get_adj_lines(self.all_pos)
+        self.all_adj = np.array(edges)
+        self.all_lines = np.array(lines,
+                         dtype=[('red',np.ubyte),
+                                ('green',np.ubyte),
+                                ('blue',np.ubyte),
+                                ('alpha',np.ubyte),
+                                ('width',float)])
+
+        return self.all_pos, self.all_text, self.all_textbox, self.all_adj, self.all_lines
+
+
+
+
+
+
+class BTQT(pg.GraphItem):
+    def __init__(self, bt_dict):
+        """
+        A visualizer for behaviour trees that uses Qt for graphics.
+        bt_dict is a dictionary of dictionaries that represent the tree.
+        """
+        # we need to create a window before we create a GraphItem
+        self.window, self.view = self._create_window()
+        # this needs to exist before the init to superclass
         self.textItems = []
-        self.ordered_node_pos = []
-        self.ordered_node_ids= []
-        self.adj = []
-        self.node_labels = []
-
-        # create the underlying graph object from the tree
-        G = nx.OrderedGraph()
-        # this traversal lets each node add itself to the graph
-        traverse_graph(root, G)
-        # create the visual layout of the nodes
-        self.pos_dict = nx.drawing.nx_pydot.graphviz_layout(G, prog='dot')
-        ###########################################
-        # graphics, windows etc
-        ###########################################
-
-        # createa a window
-        window = pg.GraphicsWindow()
-        # init the superclass
+        # initialize superclass so we get the default functions and such
         pg.GraphItem.__init__(self)
-        # enable antialiasing
-        pg.setConfigOptions(antialias=True)
-        pg.setConfigOption('background', 'w')
-        window.setWindowTitle('Bee Tea')
-        # a view box, literally where stuff is drawn
-        view = window.addViewBox()
-        # no wonkiness please
-        view.setAspectLocked()
-        # add this to the view
-        # we will set the data later, at the end
-        view.addItem(self)
-        # tell the window that we want to listen to clicks
-        window.scene().sigMouseClicked.connect(self.clicked)
+        # add outselves to the view
+        self.view.addItem(self)
+
+        self.visual_tree = VisualTree(bt_dict)
+        self._create_visual()
 
 
-        # this will define the order of all nodes going forward
-        ordered_node_ids = []
-        # node positions, same order as names
-        ordered_node_pos = []
-        # adjacency list of index pairs
-        adj = []
-        # (rgba width) list of colors
-        lines = []
-        # textboxes should contain ['border':pen, 'fill':brush]
-        # to create a box around the label
-        textboxes = []
-        node_labels = []
-        # status of each node in the same order as the ids
-        ordered_node_status = []
+    def _create_visual(self):
 
-        # we will put all children into a queue, this creates
-        # a natural ordering of all nodes
-        node_queue = [root]
+        pos, text, textbox, adj, lines = self.visual_tree.get_visuals()
 
-        # emulate a do-while loop to also process the root node in one chunk
-        queue_empty = False
-        while not queue_empty:
-            # dequeue
-            node = node_queue[0]
-            node_queue = node_queue[1:]
-
-            # child is a dict of stuff
-            nid = node['id']
-            # nid is a list of ints, we need a hashable thing, a string!
-            strnid = '-'.join(str(i) for i in nid)
-            ordered_node_ids.append(strnid)
-            ordered_node_pos.append(self.pos_dict[strnid])
-            ordered_node_status.append(node['status'])
-
-            # color the nodes according to their status
-            status = node['status']
-            if status == FAILURE:
-                # red
-                c = pg.mkBrush((255,0,0,255))
-                l = pg.mkPen((255,0,0,255))
-            elif status == SUCCESS:
-                # green
-                c = pg.mkBrush((0, 255, 0, 255))
-                l = pg.mkPen((0, 255, 0, 255))
-            elif status == RUNNING:
-                # thick blue
-                c = pg.mkBrush((0, 0, 255, 255))
-                l = pg.mkPen((0, 0, 255, 255))
-            else:
-                # unticked, thin grey
-                c = pg.mkBrush((150, 150, 150, 255))
-                l = pg.mkPen((150, 150, 150, 255))
-            textboxes.append({'border':l, 'fill':c})
-
-            node_type = node['type']
-            if node_type == 'SEQ':
-                node_labels.append('-->')
-            elif node_type == 'FB':
-                node_labels.append('?')
-            else:
-                node_labels.append(node['label'])
-
-            try:
-                new_nodes = node['children']
-                node_queue.extend(new_nodes)
-            except KeyError:
-                # no children for this node
-                pass
-
-            queue_empty = len(node_queue) <= 0
-
-        # we can find the edge between a child and parent from their unique names easily
-        # R0 is R's child, R000 is R00's child
-        # XYZ is XY's child
-        for i,nid in enumerate(ordered_node_ids):
-            if i == 0:
-                # skip the root, we know it has no parents
-                continue
-
-            # ids are constructed so that id = parent_id + '-' + child_index
-            parent_nid = '-'.join(nid.split('-')[:-1])
-            parent_i = ordered_node_ids.index(parent_nid)
-            adj.append( (parent_i, i) )
-
-            # color the lines according to the status of the child
-            status = ordered_node_status[i]
-            if status == FAILURE:
-                # red
-                line = (255, 0, 0, 255, 2)
-            elif status == SUCCESS:
-                # green
-                line = (0, 255, 0, 255, 2)
-            elif status == RUNNING:
-                # thick blue
-                line = (0, 0, 255, 255, 5)
-            else:
-                # unticked, thin grey
-                line = (150, 150, 150, 255, 1)
-            lines.append(line)
-
-        lines = np.array(lines, dtype=[('red',np.ubyte),
-                                       ('green',np.ubyte),
-                                       ('blue',np.ubyte),
-                                       ('alpha',np.ubyte),
-                                       ('width',float)])
-        ##################################################################
-        # self settings
-        ##################################################################
-
-        # after all that stuff, we want some of them to be accessible
-        # when clicking etc.
-        self.ordered_node_pos = np.array(ordered_node_pos)
-        self.ordered_node_ids = ordered_node_ids
-        self.adj = np.array(adj)
-        self.node_labels = node_labels
-
-        # comes from the superclass
-        self.setData(pos=self.ordered_node_pos,
+        # finally set the data, this probably triggers other stuff in superclass too
+        self.setData(pos = pos,
                      size=50,
                      symbol='s',
-                     adj=self.adj,
-                     pen=lines,
+                     adj = adj,
+                     pen = lines,
+                     text = text,
+                     textbox = textbox,
                      symbolBrush = None,
-                     symbolPen = None,
-                     text = self.node_labels,
-                     textbox = textboxes)
+                     symbolPen = None)
 
+
+
+    def _create_window(self):
+        # create a window and set some default things to look good
+        window = pg.GraphicsWindow()
+        pg.setConfigOptions(antialias=True)
+        pg.setConfigOption('background', (240,240,240,255))
+        window.setWindowTitle('Bee Tea')
+        view = window.addViewBox()
+        view.setAspectLocked()
+        pg.setConfigOptions(antialias=True)
+        pg.setConfigOption('background', (240,240,240,255))
+        # connect to click listener
+        window.scene().sigMouseClicked.connect(self._on_click)
+        return window, view
+
+    def _on_click(self, ev):
+        if ev.button() == QtCore.Qt.LeftButton:
+            # this is aleft button click on a graph piece, minimize/maximize it
+            pos = ev.pos()
+            pts = self.scatter.pointsAt(pos)
+            if len(pts) != 1:
+                # ignore clicks that 'touches' too many things
+                ev.ignore()
+                return
+
+            item_index = pts[0].data()[0]
+            node = self.visual_tree._nodes[item_index]
+            node.toggle_minimize()
+            self.visual_tree.re_index()
+            print('clicked vis node:', node.str_id, 'minimized:', node._is_minimized)
+            self._last_clicked_node = node
+            self._create_visual()
+
+            ev.accept()
+        else:
+            ev.ignore()
 
 
     def setData(self, **kwds):
@@ -344,27 +407,7 @@ class BT_Visual(pg.GraphItem):
             item.setPos(*self.data['pos'][i])
 
 
-    def clicked(self, ev):
-        """
-        click listener
-        """
 
-        if ev.button() == QtCore.Qt.LeftButton:
-            # this is aleft button click on a graph piece, minimize/maximize it
-            pos = ev.pos()
-            pts = self.scatter.pointsAt(pos)
-            if len(pts) != 1:
-                # ignore clicks that 'touches' too many things
-                ev.ignore()
-                return
-
-            item_index = pts[0].data()[0]
-            text_of_item = self.textItems[item_index].textItem.toPlainText()
-            print('clicked:', item_index, text_of_item)
-            id_of_item = self.ordered_node_ids[item_index]
-            print('clicked:', id_of_item)
-        else:
-            ev.ignore()
 
 
 
@@ -373,8 +416,11 @@ if __name__=='__main__':
     with open('large_example_bt.json', 'r') as fin:
         root = json.load(fin)
 
-    #  viz = BT_Visual(root)
-    vt = VisualTree(root)
+    btqt = BTQT(root)
+    vt = btqt.visual_tree
+    pos, text, textbox, adj, lines = vt.get_visuals()
+
+
 
 
 
