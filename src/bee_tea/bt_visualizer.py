@@ -23,30 +23,20 @@ colors = {'None':(100,100,100,255),
           'RUNNING':(0,0,255,255)}
 
 # made into tuples so that we can just + with the colors
-widths = {'None':(2,),
-          'SUCCESS':(4,),
-          'FAILURE':(4,),
-          'RUNNING':(6,)}
+widths = {'None':(1,),
+          'SUCCESS':(2,),
+          'FAILURE':(2,),
+          'RUNNING':(3,)}
 
 
 class VisualNode:
     def __init__(self, node, visual_tree, nx_graph):
-        self._is_minimized = False
-        self._is_visible = True
-
-        self._visual_tree = visual_tree
-        self._nx_graph = nx_graph
-
-        self.type = node['type']
-        # set some stuff at the same time
-        self._change_status(node['status'])
-        self._change_id(node['id'])
-        self._change_label(node['label'])
         # we may want this at some point since change_label actually modifies the
         # label slightly
         self._original_label = node['label']
 
-        nx_graph.add_node(self.str_id)
+        self._is_minimized = False
+        self._is_visible = True
 
         self.children = []
         # this node is adjacent to its children
@@ -58,6 +48,18 @@ class VisualNode:
         # this will be set by the master tree object, once all the nodes
         # are done creating themselves
         self.pos = None
+
+        self._visual_tree = visual_tree
+        self._nx_graph = nx_graph
+
+        self.type = node['type']
+        # set some stuff at the same time
+        self._change_id(node['id'])
+        self._change_label(node['label'])
+        self._change_status(node['status'])
+
+        nx_graph.add_node(self.str_id, label=self._original_label)
+
 
         # order of addition is the same as position in the list of nodes
         self.index = len(visual_tree._nodes)
@@ -74,6 +76,9 @@ class VisualNode:
             self.adjlines.append((self.index, visual_child.index, visual_child.line))
 
 
+        # change stuff now that we know the children
+        self._change_status(node['status'])
+
     def re_index(self, visual_tree, nx_graph):
         """
         re-indexes the whole tree
@@ -85,9 +90,10 @@ class VisualNode:
         self.adjlines = []
 
         # order of addition is the same as position in the list of nodes
-        old_index = self.index
         self.index = len(visual_tree._nodes)
         visual_tree.add_node(self)
+
+        self._change_label(self._original_label)
 
         for child in self.children:
             if child._is_visible:
@@ -102,7 +108,7 @@ class VisualNode:
     def _change_label(self, label):
         # we dont want very long labels.
         # first lets try splitting from spaces
-        label = '\n'.join(label.split(' '))
+        #  label = '\n'.join(label.split(' '))
         if self._is_minimized:
             self.label = label
 
@@ -112,7 +118,10 @@ class VisualNode:
                   'CON':label,
                   'NEG':'!'}
 
-        self.label = labels[self.type]
+        if label == 'root':
+            self.label = label
+        else:
+            self.label = labels[self.type]
 
 
     def _change_id(self, new_id):
@@ -128,7 +137,21 @@ class VisualNode:
         self.line = self.color+widths[self.status]
         self.brush = pg.mkBrush(self.color)
         self.pen = pg.mkPen(self.color)
-        self.textbox = {'border':self.pen, 'fill':self.brush}
+
+        # for long texts, showing them vertically helps a little
+        if len(self.children) == 0:# and len(self.label) > 10:
+            angle = 0
+            anchor = (0.5,0.5)
+        else:
+            angle = 0
+            anchor = (0.5, 0.5)
+
+        self.textbox = {'border':self.pen,
+                        'fill':self.brush,
+                        'angle':angle,
+                        'anchor':anchor,
+                        'tooltip':self._original_label,
+                        'scale':0.5}
 
     def dictify(self):
         """
@@ -149,13 +172,22 @@ class VisualNode:
 
     def set_visibilty(self, invisible):
         self._is_visible = not invisible
-        for child in self.children:
-            child.set_visibilty(invisible)
+        # dont make children visible if we are supposed to be minimized
+        if not self._is_minimized:
+            for child in self.children:
+                child.set_visibilty(invisible)
 
     def toggle_minimize(self):
+        # dont minimize root
+        if self._original_label == 'root':
+            print("Can't minimize the root node!")
+            return
+
         self._is_minimized = not self._is_minimized
+        self._change_label(self._original_label)
         for child in self.children:
             child.set_visibilty(self._is_minimized)
+
 
 
     def refresh(self, node):
@@ -225,7 +257,8 @@ class VisualTree:
         # construct the graph
         self.root_node = VisualNode(bt_dict, self, self._nx_graph)
         # create the id->position dictionary
-        self.pos_dict = nx.drawing.nx_pydot.graphviz_layout(self._nx_graph, prog='dot')
+        self.pos_dict = nx.drawing.nx_pydot.graphviz_layout(self._nx_graph,
+                                                            prog='dot')
 
         # set the nodes positions
         for node in self._nodes:
@@ -313,6 +346,11 @@ class BTQT(pg.GraphItem):
         A visualizer for behaviour trees that uses Qt for graphics.
         bt_dict is a dictionary of dictionaries that represent the tree.
         """
+        self._initial_scale_done = False
+        # initially assume scaling is 1
+        self.xscale = 1
+        self.yscale = 1
+
         # we need to create a window before we create a GraphItem
         self.window, self.view = self._create_window()
         # this needs to exist before the init to superclass
@@ -325,6 +363,31 @@ class BTQT(pg.GraphItem):
         self.visual_tree = VisualTree(bt_dict)
         self._create_visual()
 
+
+    def _update_scaling(self):
+        """
+        return true if scale has changed enough
+        """
+
+        xrng, yrng = self.view.viewRange()
+        xmin, xmax = xrng
+        ymin, ymax = yrng
+
+        if not self._initial_scale_done:
+            self.init_xscale = xmax-xmin
+            self.init_yscale = ymax-ymin
+            self._initial_scale_done = True
+
+        oldxscale = self.xscale
+        oldyscale = self.yscale
+
+        self.xscale = self.init_xscale / (xmax-xmin)
+        self.yscale = self.init_yscale / (ymax-ymin)
+
+        if np.abs(self.xscale-oldxscale) > 0.01:
+            return True
+
+        return False
 
     def _create_visual(self):
 
@@ -342,7 +405,6 @@ class BTQT(pg.GraphItem):
                      symbolPen = None)
 
 
-
     def _create_window(self):
         # create a window and set some default things to look good
         window = pg.GraphicsWindow()
@@ -355,7 +417,14 @@ class BTQT(pg.GraphItem):
         pg.setConfigOption('background', (240,240,240,255))
         # connect to click listener
         window.scene().sigMouseClicked.connect(self._on_click)
+        view.sigRangeChangedManually.connect(self._on_range_changed)
         return window, view
+
+    def _on_range_changed(self, ev):
+        scale_changed = self._update_scaling()
+        if scale_changed:
+            self.scaleTexts()
+
 
     def _on_click(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
@@ -392,14 +461,30 @@ class BTQT(pg.GraphItem):
         self.setTexts(self.text, self.textbox)
         self.updateGraph()
 
+    def scaleTexts(self):
+        self.setTexts(self.text, self.textbox)
+        self.updateGraph()
+
     def setTexts(self, text, textbox):
         for i in self.textItems:
             i.scene().removeItem(i)
         self.textItems = []
+        # to scale the textboxes
+        scale = min(2.5, self.xscale)
         for t,tb in zip(text, textbox):
-            item = pg.TextItem(t, anchor=(0.5, 0.5), color='k', border=tb['border'], fill=tb['fill'])
+            if scale < 1:
+                t = '.'
+            item = pg.TextItem(t,
+                               anchor=tb['anchor'],
+                               color='k',
+                               border=tb['border'],
+                               fill=tb['fill'],
+                               angle=tb['angle'])
+            item.setScale(tb['scale'] * scale)
+            item.setToolTip(tb['tooltip'])
             self.textItems.append(item)
             item.setParentItem(self)
+
 
     def updateGraph(self):
         pg.GraphItem.setData(self, **self.data)
