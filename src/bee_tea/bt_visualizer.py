@@ -7,6 +7,7 @@
 
 from __future__ import print_function
 import rospy
+from std_msgs.msg import String
 import json
 
 import networkx as nx
