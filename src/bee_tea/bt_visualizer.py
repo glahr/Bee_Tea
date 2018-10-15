@@ -7,7 +7,7 @@
 
 from __future__ import print_function
 import rospy
-
+import json
 
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -341,11 +341,14 @@ class VisualTree:
 
 
 class BTQT(pg.GraphItem):
-    def __init__(self, bt_dict):
+    def __init__(self, bt_dict_topic):
         """
         A visualizer for behaviour trees that uses Qt for graphics.
         bt_dict is a dictionary of dictionaries that represent the tree.
         """
+        self.bt_subs = rospy.Subscriber(bt_dict_topic, String, self.accept_json)
+
+
         self._initial_scale_done = False
         # initially assume scaling is 1
         self.xscale = 1
@@ -360,9 +363,18 @@ class BTQT(pg.GraphItem):
         # add outselves to the view
         self.view.addItem(self)
 
-        self.visual_tree = VisualTree(bt_dict)
-        self._create_visual()
+        self._initialized_tree = False
+        self.visual_tree = None
 
+    def accept_json(self, data):
+        root = json.loads(data)
+
+        if self._initialized_tree:
+            self.visual_tree.refresh(root)
+        else:
+            self.visual_tree = VisualTree(root)
+            self._create_visual()
+            self._initialized_tree = True
 
     def _update_scaling(self):
         """
@@ -391,6 +403,7 @@ class BTQT(pg.GraphItem):
 
     def _create_visual(self):
 
+        # TODO recompute layout?
         pos, text, textbox, adj, lines = self.visual_tree.get_visuals()
 
         # finally set the data, this probably triggers other stuff in superclass too
@@ -493,17 +506,11 @@ class BTQT(pg.GraphItem):
 
 
 
-
-
-
 if __name__=='__main__':
-    import json
-    with open('large_example_bt.json', 'r') as fin:
-        root = json.load(fin)
+    rospy.init_node('BT_visualizer')
+    rate = rospy.Rate(10)
 
-    btqt = BTQT(root)
-    vt = btqt.visual_tree
-    pos, text, textbox, adj, lines = vt.get_visuals()
+    btqt = BTQT('/bt_response')
 
 
 
