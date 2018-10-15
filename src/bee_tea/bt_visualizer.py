@@ -509,9 +509,8 @@ class BTQT(pg.GraphItem):
 
 if __name__=='__main__':
     rospy.init_node('BT_visualizer')
-    rate = rospy.Rate(10)
-
     btqt = BTQT('/bt_response')
+    rospy.spin()
 
 
 
