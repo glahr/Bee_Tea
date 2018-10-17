@@ -9,19 +9,23 @@ from __future__ import print_function
 import rospy
 from std_msgs.msg import String
 import json
+import queue
 
 import networkx as nx
 import matplotlib.pyplot as plt
 plt.ion()
 import numpy as np
 import pyqtgraph as pg
+pg.setConfigOptions(antialias=False)
+pg.setConfigOption('background', (240,240,240,255))
+
 from pyqtgraph.Qt import QtCore, QtGui
 
 
-colors = {'None':(100,100,100,255),
-          'SUCCESS':(0,255,0,255),
-          'FAILURE':(255,0,0,255),
-          'RUNNING':(0,0,255,255)}
+colors = {'None':(150,150,150,255),
+          'SUCCESS':(50,255,50,255),
+          'FAILURE':(255,50,50,255),
+          'RUNNING':(100,100,255,255)}
 
 # made into tuples so that we can just + with the colors
 widths = {'None':(1,),
@@ -38,6 +42,7 @@ class VisualNode:
 
         self._is_minimized = False
         self._is_visible = True
+        self.status = None
 
         self.children = []
         # this node is adjacent to its children
@@ -133,6 +138,12 @@ class VisualNode:
     def _change_status(self, new_status):
         global colors
         global widths
+
+        changed = False
+        if self.status != new_status:
+            changed = True
+
+
         self.status = new_status
         self.color = colors[self.status]
         self.line = self.color+widths[self.status]
@@ -153,6 +164,8 @@ class VisualNode:
                         'anchor':anchor,
                         'tooltip':self._original_label,
                         'scale':0.5}
+
+        return changed
 
     def dictify(self):
         """
@@ -196,6 +209,7 @@ class VisualNode:
         if all nodes are unchanged except their status's, the tree is kept as is
         and the status are modified.
         returns True if a complete re-make is required
+        returns a second True if a visual update is needed.
         """
         self_changed = any([node['label'] != self._original_label,
                             node['id'] != self.id,
@@ -206,16 +220,18 @@ class VisualNode:
         # since the parent will be using 'any' to asses if children are
         # changed, we need to return True to signal the change
         if self_changed:
-            return self_changed
+            return self_changed, False
 
         children_changed = []
+        visual_changed = False
         # number of children the same?
         if len(self.children) == len(node['children']):
             # are the children unchanged?
             for dict_child, child in zip(node['children'], self.children):
-                child_changed = child.refresh(dict_child)
+                child_changed, child_visual_changed = child.refresh(dict_child)
                 # collect the change flags
                 children_changed.append(child_changed)
+                visual_changed = child_visual_changed or visual_changed
 
             # any one could be changed to trigger a re-build
             children_changed = any(children_changed)
@@ -225,14 +241,14 @@ class VisualNode:
 
         # if children changed, gotta signal that up
         if children_changed:
-            return children_changed
+            return children_changed, False
 
         # nothing changed, good.
         # just update the status then
-        self._change_status(node['status'])
+        status_chagned = self._change_status(node['status'])
 
         # no change!
-        return False
+        return False, status_chagned or visual_changed
 
 
 
@@ -304,15 +320,15 @@ class VisualTree:
 
 
     def refresh(self, bt_dict=None):
-        bt_changed = self.root_node.refresh(bt_dict)
+        bt_changed, visual_changed = self.root_node.refresh(bt_dict)
         # root node will have checked all the children if there is any
         # breaking changes in the structure of the tree
         if bt_changed:
             # if there is a structural change, re-make the whole thing
             self._create_new(bt_dict)
-            return True
+            return True, False
 
-        return False
+        return False, visual_changed
 
 
     def get_visuals(self):
@@ -347,7 +363,6 @@ class BTQT(pg.GraphItem):
         A visualizer for behaviour trees that uses Qt for graphics.
         bt_dict is a dictionary of dictionaries that represent the tree.
         """
-        self.bt_subs = rospy.Subscriber(bt_dict_topic, String, self.accept_json)
 
 
         self._initial_scale_done = False
@@ -364,18 +379,50 @@ class BTQT(pg.GraphItem):
         # add outselves to the view
         self.view.addItem(self)
 
+        # sub to the bt description topic
+        self.bt_subs = rospy.Subscriber(bt_dict_topic, String, self.accept_json)
+
         self._initialized_tree = False
         self.visual_tree = None
+        # needed for ros->qt problems
+        self._visual_q = queue.Queue()
+        # so that we can avoid needless graphics updates
+        self._last_json = None
+
+        # signal to the main run loop if we want to be done with life
+        self._exit = False
 
     def accept_json(self, data):
-        root = json.loads(data)
+        json_str = data.data
+        if json_str != self._last_json:
+            root = json.loads(json_str)
+            self._visual_q.put(root)
+            self._last_json = json_str
+            print('visual q len:', self._visual_q.qsize())
+
+    def refresh_visual(self):
+        # if the window is not visible, it was closed somehow
+        # so we signal to close the whole thing
+        self._exit = not self.window.isVisible()
+
+        try:
+            #TODO fix the edges?
+            while self._visual_q.qsize() > 2:
+                root = self._visual_q.get_nowait()
+        except queue.Empty:
+            return self._exit
 
         if self._initialized_tree:
-            self.visual_tree.refresh(root)
+            overhaul_needed, visual_needed = self.visual_tree.refresh(root)
+            if visual_needed:
+                print('visual change!')
+                self._create_visual()
         else:
             self.visual_tree = VisualTree(root)
             self._create_visual()
             self._initialized_tree = True
+
+        return self._exit
 
     def _update_scaling(self):
         """
@@ -422,13 +469,9 @@ class BTQT(pg.GraphItem):
     def _create_window(self):
         # create a window and set some default things to look good
         window = pg.GraphicsWindow()
-        pg.setConfigOptions(antialias=True)
-        pg.setConfigOption('background', (240,240,240,255))
         window.setWindowTitle('Bee Tea')
         view = window.addViewBox()
         view.setAspectLocked()
-        pg.setConfigOptions(antialias=True)
-        pg.setConfigOption('background', (240,240,240,255))
         # connect to click listener
         window.scene().sigMouseClicked.connect(self._on_click)
         view.sigRangeChangedManually.connect(self._on_range_changed)
@@ -510,8 +553,15 @@ class BTQT(pg.GraphItem):
 if __name__=='__main__':
     rospy.init_node('BT_visualizer')
     btqt = BTQT('/bt_response')
-    rospy.spin()
+    rate = rospy.Rate(60)
 
+    while not rospy.is_shutdown():
+        exit = btqt.refresh_visual()
+        pg.QtGui.QApplication.processEvents()
+        if exit:
+            pg.QtGui.QGuiApplication.quit()
+            print('Done')
+            break
 
 
 
