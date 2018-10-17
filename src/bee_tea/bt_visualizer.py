@@ -227,11 +227,15 @@ class VisualNode:
         # number of children the same?
         if len(self.children) == len(node['children']):
             # are the children unchanged?
+            # remake the adjlines so that if a child has changed status,
+            # we will have the new color in us
+            self.adjlines = []
             for dict_child, child in zip(node['children'], self.children):
                 child_changed, child_visual_changed = child.refresh(dict_child)
                 # collect the change flags
                 children_changed.append(child_changed)
                 visual_changed = child_visual_changed or visual_changed
+                self.adjlines.append((self.index, child.index, child.line))
 
             # any one could be changed to trigger a re-build
             children_changed = any(children_changed)
@@ -398,29 +402,30 @@ class BTQT(pg.GraphItem):
             root = json.loads(json_str)
             self._visual_q.put(root)
             self._last_json = json_str
-            print('visual q len:', self._visual_q.qsize())
 
     def refresh_visual(self):
         # if the window is not visible, it was closed somehow
         # so we signal to close the whole thing
         self._exit = not self.window.isVisible()
 
+        root = None
         try:
-            #TODO fix the edges?
             while self._visual_q.qsize() > 2:
                 root = self._visual_q.get_nowait()
+
+            if root is not None:
+                if self._initialized_tree:
+                    overhaul_needed, visual_needed = self.visual_tree.refresh(root)
+                    if visual_needed:
+                        self._create_visual()
+                else:
+                    self.visual_tree = VisualTree(root)
+                    self._create_visual()
+                    self._initialized_tree = True
+
         except queue.Empty:
             return self._exit
 
-        if self._initialized_tree:
-            overhaul_needed, visual_needed = self.visual_tree.refresh(root)
-            if visual_needed:
-                print('visual change!')
-                self._create_visual()
-        else:
-            self.visual_tree = VisualTree(root)
-            self._create_visual()
-            self._initialized_tree = True
 
         return self._exit
 
@@ -451,7 +456,6 @@ class BTQT(pg.GraphItem):
 
     def _create_visual(self):
 
-        # TODO recompute layout?
         pos, text, textbox, adj, lines = self.visual_tree.get_visuals()
 
         # finally set the data, this probably triggers other stuff in superclass too
